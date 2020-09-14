@@ -1,0 +1,146 @@
+---
+title: "CrossValidation_Bootstrap_training"
+author: "Pimenta, J.V.A."
+date: "8/29/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Validation Set Approach
+
+Using a set.seed because of random process, installing library.
+
+```{r Setting up, warning=FALSE}
+install.packages('ISLR')
+install.packages('boot')
+library(ISLR)
+library(boot)
+```
+
+Doing the regression for a part of the observational data.
+
+```{r}
+set.seed(1)
+train = sample(392, 196)
+lm.fit = lm(mpg ~ horsepower, data = Auto ,subset = train)
+```
+
+```{r}
+attach(Auto)
+mean((mpg - predict(lm.fit, Auto))[-train]^2)
+```
+Testing polynomial forms:
+
+```{r}
+lm.fit2 = lm(mpg ~ poly(horsepower, 2) ,data = Auto ,subset = train )
+mean((mpg - predict(lm.fit2, Auto))[-train]^2)
+```
+```{r}
+lm.fit3 = lm(mpg ~ poly(horsepower, 3), data = Auto ,subset = train)
+mean((mpg - predict(lm.fit3, Auto))[-train]^2)
+```
+For another sample:
+
+```{r}
+set.seed(2)
+train = sample(392, 196)
+
+lm.fit = lm(mpg ~ horsepower , subset = train)
+mean(( mpg - predict(lm.fit , Auto))[-train]^2)
+
+lm.fit2 = lm(mpg ~ poly(horsepower ,2), data = Auto , subset = train)
+mean((mpg - predict(lm.fit2, Auto))[-train]^2)
+
+lm.fit3 = lm(mpg ~ poly(horsepower ,3), data = Auto ,subset = train )
+mean((mpg - predict(lm.fit3, Auto))[-train]^2)
+```
+
+## LOOCV, leave-one-out cross-validation
+
+
+```{r}
+glm.fit = glm(mpg~horsepower ,data = Auto)
+cv.err = cv.glm(Auto ,glm.fit)
+cv.err$delta
+```
+For polinomial forms:
+
+```{r}
+cv.error <- rep(0,5)
+
+for(i in 1:5){
+  glm.fit = glm(mpg ~ poly(horsepower, i) ,data = Auto)
+  cv.error[i] = cv.glm(Auto, glm.fit)$delta[1]
+}
+
+cv.error
+```
+
+## K-fold Cross-Validation
+
+Below we use k = 10, a common choice for k.
+
+```{r}
+set.seed(17)
+cv.error.10 = rep(0,10)
+
+for(i in 1:10){
+  glm.fit = glm(mpg ~ poly(horsepower, i) , data = Auto)
+  cv.error.10[i] = cv.glm(Auto, glm.fit, K=10)$delta[1]
+}
+
+cv.error.10
+```
+delta[2] is a biased corrected version for delta. In this case, is quite similar to delta[1].
+
+
+## Bootstraping
+
+Consists on random sampling from a data base to make estimates.
+
+Let's firts build a function that given (X,Y) can return an estimate for our parameter alpha.
+
+```{r}
+alpha.fn = function(data ,index){
+X = data$X[index]
+Y = data$Y[index]
+return((var(Y) - cov(X, Y))/(var(X) + var(Y) - 2*cov(X, Y)))
+}
+```
+
+Now for the bootstrapping
+```{r}
+set.seed(1)
+alpha.fn(Portfolio, sample(100 ,100 , replace = T ))
+```
+
+But we can use the boot() function;
+```{r}
+boot(Portfolio, alpha.fn, R =1000)
+```
+
+For estimating variability on estimates of coefficients in linear regressions.
+
+```{r}
+boot.fn = function(data, index)
+return(coef(lm(mpg~horsepower, data=data, subset = index)))
+```
+
+```{r}
+boot(Auto, boot.fn, 1000)
+summary(lm(mpg~horsepower, data= Auto))$coef
+```
+We can observe that the Std vary. That indicates a problem with the assumptions made in the regression. We now that a second order binomial fits well this data and we check for the difference when we fit of of those:
+
+```{r}
+boot.fn = function(data, index)
+coefficients(lm(mpg~horsepower + I(horsepower^2) ,data = data, subset = index))
+
+set.seed(1)
+boot(Auto, boot.fn ,1000)
+summary(lm(mpg~horsepower + I(horsepower ^2) , data = Auto ) )$coef
+```
+

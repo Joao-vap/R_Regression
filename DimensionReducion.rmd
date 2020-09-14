@@ -1,0 +1,324 @@
+---
+title: "DimensionReducion"
+author: "Pimenta, J.V.A."
+date: "8/30/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Subset Selection Models
+
+Let's import and deal with the data:
+
+```{r}
+library(ISLR)
+names(Hitters)
+
+dim(Hitters)
+sum(is.na(Hitters$Salary))
+```
+```{r}
+Hitters = na.omit(Hitters)
+dim(Hitters)
+```
+## Best Subset Selection
+
+```{r}
+library(leaps)
+regfit.full <- regsubsets(Salary ~ ., Hitters, nvmax = 19)
+summary(regfit.full)
+reg.summ <- summary(regfit.full)
+reg.summ$rsq
+```
+```{r}
+par(mfrow = c (1 ,2))
+plot(reg.summ$rss, xlab = "Number of Variables", ylab ="RSS", type ="l")
+plot(reg.summ$adjr2 , xlab =" Number of Variables " , ylab =" Adjusted RSq " , type ="l")
+M <- which.max(reg.summ$adjr2)
+points(M, reg.summ$adjr2[M] , col ="red" , cex =2 , pch =20)
+```
+```{r}
+par(mfrow = c (1 ,2))
+plot(reg.summ$cp,xlab =" Number of Variables " , ylab =" Cp " ,type = 'l')
+ Min <- which.min(reg.summ$cp)
+points(Min , reg.summ$cp[Min], col =" red " , cex =2 , pch =20)
+Mi <- which.min(reg.summ$bic)
+plot(reg.summ$bic, xlab =" Number of Variables " , ylab =" BIC " , type = 'l')
+points(Mi, reg.summ$bic [Mi] , col =" red " , cex =2 , pch =20)
+```
+
+```{r}
+plot( regfit.full , scale ="r2")
+plot( regfit.full , scale ="adjr2")
+plot( regfit.full , scale ="Cp")
+plot( regfit.full , scale ="bic")
+```
+```{r}
+coef(regfit.full, 6)
+```
+
+## Forward and Backward Stepwise Selection
+
+```{r}
+regfit.fwd = regsubsets(Salary~. , data = Hitters, nvmax =19 ,method ="forward")
+summary( regfit.fwd )
+regfit.bwd = regsubsets ( Salary~. , data = Hitters , nvmax =19 ,method = "backward")
+summary(regfit.bwd)
+```
+
+```{r}
+coef(regfit.full, 7)
+coef(regfit.bwd, 7)
+coef(regfit.fwd, 7)
+```
+
+## Choosing Among Models Using the Validation Set Approach and Cross-Validation
+
+```{r}
+set.seed(1)
+train <- sample(c(TRUE, FALSE), nrow(Hitters), replace = TRUE)
+test <- (!train)
+regfit.best <- regsubsets(Salary ~ ., data = Hitters[train,], nvmax = 19)
+test.mat <- model.matrix(Salary~. , data = Hitters[test,])
+```
+
+```{r}
+```
+
+
+```{r}
+val.errors <- rep(NA, 19)
+for(i in 1:19){
+  coefi <- coef(regfit.best, id = i)
+  pred = test.mat[,names(coefi)]%*%coefi
+  val.errors[i] = mean((Hitters$Salary[test] - pred)^2)
+}
+which.min(val.errors)
+```
+The best model appears to be one with 10 variables.
+
+```{r}
+coef(regfit.best, 10)
+```
+Of course we can make our own predict function;
+
+```{r}
+predict.regsubsets = function(object, newdata, id, ...){
+  form = as.formula(object$call[[2]])
+  mat = model.matrix (form ,newdata )
+  coefi = coef(object, id = id)
+  xvars = names( coefi )
+  mat[,xvars]%*% coefi
+}
+```
+Finally, we perform best subset selection on the full data set, and select the best ten-variable model.
+
+```{r}
+regfit.best = regsubsets(Salary~. , data = Hitters , nvmax =19)
+coef(regfit.best, 10)
+```
+
+We now try to choose among the models of different sizes using cross-validation.
+
+```{r}
+k = 10
+set.seed(1)
+folds = sample(1:k , nrow(Hitters), replace = TRUE )
+cv.errors = matrix(NA , k , 19, dimnames = list( NULL , paste (1:19) ) )
+```
+
+```{r}
+for(j in 1:k) {
+  
+  best.fit = regsubsets(Salary~. , data = Hitters [folds != j,] ,nvmax =19)
+
+  for ( i in 1:19) {
+    
+    pred = predict(best.fit ,Hitters[folds == j,] , id = i)
+    cv.errors[j,i] = mean((Hitters$Salary[folds == j] - pred)^2)
+  }
+}
+```
+
+```{r}
+mean.cv.errors <- apply(cv.errors, 2, mean)
+mean.cv.errors
+
+plot(mean.cv.errors, type = 'b')
+```
+We now perform reg on the full data with a 11-p model
+
+```{r}
+best.model <- regsubsets(Salary ~., data <- Hitters, nvmax = 19)
+coef(best.model, 11)
+```
+
+# Ridge Regression and the Lasso
+
+```{r}
+library(glmnet)
+```
+
+```{r}
+x = model.matrix(Salary~ ., Hitters)[,-1]
+y = Hitters$Salary
+```
+
+# Ridge Regression
+
+If alpha=0 then a ridge regression model is fit, and if alpha=1 then a lasso model is fit
+
+```{r}
+grid <- 10^seq(10 ,-2 ,length =100)
+ridge.mod <- glmnet(x, y, alpha = 0, lambda = grid)
+```
+
+```{r}
+coef(ridge.mod)[,50]
+sqrt ( sum ( coef ( ridge.mod )[-1,50]^2) )
+```
+
+For a specific value:
+
+```{r}
+predict ( ridge.mod , s =50 , type ="coefficients")[1:20 ,]
+```
+
+We will now divide the data to measure both strategies power.
+
+```{r}
+set.seed(1)
+train = sample(1:nrow(x), nrow(x)/2)
+test = (-train)
+y.test = y[test]
+```
+
+```{r}
+ridge.mod = glmnet(x[train,] ,y[train] ,alpha =0 , lambda = grid , thresh = 1e-12)
+ridge.pred = predict(ridge.mod , s = 4 , newx = x[test,])
+mean((ridge.pred - y.test)^2)
+```
+Testing if it is any better than a simple linear regression.
+
+```{r}
+ridge.pred = predict(ridge.mod , s = 0 , newx = x[test,])
+mean((ridge.pred - y.test)^2)
+
+lm(y~x , subset = train)
+predict( ridge.mod , s =0 ,type ="coefficients")[1:20 ,]
+```
+
+But we must still find the optimal lambda. We'll be using cross-validation
+
+```{r}
+set.seed(1)
+cv.out = cv.glmnet(x[train,],y[train],alpha = 0)
+plot(cv.out)
+bestlam = cv.out$lambda.min
+bestlam
+```
+
+```{r}
+ridge.pred = predict(ridge.mod , s = bestlam ,newx = x[test,])
+mean((ridge.pred - y.test)^2)
+```
+
+Now let's look at the coefficients from the complete model
+
+```{r}
+out = glmnet(x ,y , alpha = 0)
+predict(out, type="coefficients", s = bestlam)[1:20,]
+```
+
+## Lasso
+
+```{r}
+lasso.mod = glmnet(x[train,] , y[train] , alpha =1 , lambda = grid)
+plot(lasso.mod)
+```
+
+```{r}
+set.seed(1)
+cv.out = cv.glmnet(x[train,] ,y[train], alpha =1)
+plot(cv.out)
+bestlam = cv.out$lambda.min
+lasso.pred = predict(lasso.mod , s = bestlam , newx = x[test,])
+mean((lasso.pred - y.test)^2)
+```
+
+```{r}
+out = glmnet(x ,y , alpha =1 ,lambda = grid )
+lasso.coef = predict(out, type ="coefficients" , s = bestlam)[1:20,]
+lasso.coef[lasso.coef !=0]
+```
+
+## PCR, PLS Regressions
+
+### Partial Component Regression
+
+```{r}
+library(pls)
+set.seed(2)
+pcr.fit <- pcr(Salary ~ ., data = Hitters, scale = TRUE, validation = 'CV')
+summary(pcr.fit)
+```
+```{r}
+validationplot(pcr.fit, val.type = 'MSE')
+```
+For the test subset
+
+```{r}
+set.seed(1)
+pcr.fit <- pcr(Salary ~ . , data = Hitters, subset = train, validation = 'CV', scale = TRUE)
+summary(pcr.fit) 
+validationplot(pcr.fit)
+```
+```{r}
+pcr.pred <- predict(pcr.fit, x[test,], ncomp = 5)
+mean((pcr.pred - y.test)^2)
+```
+
+Now we fit the model:
+
+```{r}
+pcr.fit <- pcr(Salary ~ ., data = Hitters, scale = TRUE, ncomp = 7)
+summary(pcr.fit)
+```
+
+### Partial least squares
+
+```{r}
+set.seed(1)
+
+pls.fit <- plsr(Salary ~., data = Hitters, subset = train, scale = TRUE, validation = "CV")
+summary(pls.fit)
+```
+
+```{r}
+validationplot(pls.fit, val.type = "MSEP")
+```
+```{r}
+pls.pred <- predict(pls.fit, x[test,], ncomp = 2)
+mean((pls.pred - y.test)^2)
+```
+now for the full data regression
+
+```{r}
+pls.fit <- plsr(Salary~., data = Hitters, ncomp = 2, scale = TRUE)
+summary(pls.fit)
+```
+
+
+
+
+
+
+
+
+
+
+
+
