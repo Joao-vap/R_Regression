@@ -1,0 +1,173 @@
+---
+title: "Statistical inference with the GSS data"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+```
+
+### Load data
+
+Make sure your data and R Markdown files are in the same directory. When loaded
+your data file will be called `gss`. Delete this note when before you submit 
+your work. 
+
+```{r load-data}
+load("/cloud/project/Dataproj2.Rdata")
+```
+
+
+* * *
+
+## Part 1: Data
+
+ The GSS data is collect by a well organized survey. It is mostly done by face to face interviews but there are some computer assisted interviews. There are yet, in a less frequent rate, telephone interview because there are times when the face to face or other shows itself impossible or not doable. 
+ 
+ Nevertheless this survey had a good response rate varying from 60 to 80 percent since 1972 to the last data used of 2012.
+
+ Therefore is possible to generalize results for the population included in the survey. That would be residents of U.S.A that are over 18 and are able to do the interview in english or spanish.
+ 
+ It is also well deserved of note that this is a observational study. That means that it is not possible to infer causality of any results. It is only possible to infer correlation.
+ 
+
+* * *
+
+## Part 2: Research question
+
+  It's fair to think that in the U.S.A there is a great deal of money going to military expenses. There are those who say that this amount may be too much, too little or even about right. We'll be interested in how expending time in the army can be correlated with the person's opinion on the expanding with military forces. We're also interested in if there is a significant difference between those who expend little and much time on the army. 
+   
+  Some correlation between those variables may indicate a lot of things and may be interesting to instigate future research on the matter. It is that people attending the military already believe in his underfounding? It is somehing they realize while in the army or it is something imposed by mentality in the institutuion? Those are answer tat with this data we're not able to answer but to provoque.
+  
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+First we create a data set with those variables we're interested in and visualize it.
+
+```{r}
+vetfound <- gss %>%
+  select(vetyears, natarms, year)
+
+summary(vetfound)
+```
+We ought to treat the NA's in the data.
+
+```{r}
+vetfound <- vetfound %>%
+  filter(!is.na(vetyears), !is.na(natarms))
+
+vetfound %>%
+  group_by(year) %>%
+  summarise(count=n())
+```
+
+Now to visualize each variable after filtering.
+
+```{r}
+value1 <- abs(rnorm(14705 , 0 , 1))
+
+ggplot(data=vetfound, aes(fill= vetyears, y = value1, x = year)) +
+  geom_bar(position="fill", stat="identity") +
+  xlab("Year") +
+  ylab("Percentage of levels of: years in army") +
+  theme(axis.text.x = element_text(size=10))
+
+
+ggplot(data=vetfound, aes(fill= natarms, y = value1, x = year)) +
+  geom_bar(position="fill", stat="identity") +
+  xlab("Year") +
+  ylab("Percentage of levels of: founding of army") +
+  theme(axis.text.x = element_text(size=5))
+```
+
+  Now that we've saw each variable related only to time. It's interesting to explore the relation investigated in our research question. For that, we will be using the following graphic.
+  
+  People who were never in the army are excluded in the second graphic for better visualization. 
+  
+```{r}
+ggplot(vetfound, aes(x=vetyears)) +
+    geom_bar(aes(fill=natarms)) + 
+    xlab("Amout of years") +  
+    ggtitle("Veterans and Army Founding") +
+    labs(fill="opinion on founding") +
+    theme(axis.text.x = element_text(size=7))
+
+vetsonly <- vetfound %>%
+  filter(vetyears != "None")
+  
+ggplot(vetsonly, aes(x=vetyears)) +
+    geom_bar(aes(fill=natarms)) + 
+    xlab("Amout of years") +  
+    ggtitle("Veterans and Army Founding") +
+    labs(fill="opinion on founding") +
+    theme(axis.text.x = element_text(size=7))
+```
+
+  We're only interested in the difference of opinion between those who were in the army for any amount of time and those who have never been. To make the inference more simple we'll consider those who don't think the army in underfounded as "Ok or less" and the rest as "More". We'll also be creating a variable "Veteran" for those who have spent any time in the army and "Not Veteran" for the rest.
+  
+```{r}
+vetfound <- vetfound %>%
+  mutate(veteran = if_else(vetyears != "None", "Veteran", "Not Veteran")) %>%
+  mutate(money = if_else(natarms != "Too Little", "Ok or less", "More"))
+
+value3 <- abs(rnorm(1, 0 , 1))
+
+ggplot(data=vetfound, aes(fill= money, y = value3, x = veteran)) +
+  geom_bar(position="fill", stat="identity") +
+  xlab("") +
+  ylab("Percentage of levels of: Pleased") +
+  theme(axis.text.x = element_text(size=10))
+```
+
+* * *
+
+## Part 4: Inference
+
+  We're now to start the inference. Let's state our hypothesis:
+  
+- H0 -> There is no difference in the opinion on founding between veterans and the population
+
+- Ha -> There is a difference in the opinion on founding between veterans and the population.
+
+Let's also calculate our point estimate. For that, we will assume that the population's proportion of "More"'s is well represented by our sample.
+
+```{r}
+vetfoundvets <- vetfound %>%
+  filter(veteran == "Veteran")
+vetfoundvets %>%
+  group_by(money) %>%
+  summarise(count=n())
+vetfound %>%
+  group_by(money) %>%
+  summarise(count=n())
+```
+
+  Conditions of size are well met. Conditions of independency are questionable because of the use of information of different years. It is possible that some dependency is thereby added but we will proceed with caution and with that in mind.
+  
+   With that it's possible to determine the difference between proportions. Let's construct a confidence interval for the difference (with 95% confidence)
+   
+```{r}
+prop.test(c(788, 3207), c(2861, 14705))
+```
+It is notable that 0 is not in that interval. It is therefore possible to rule out the null hypothesis.
+
+It's also possible to to use the inference function:
+```{r}
+inference(y = money, x = veteran, data = vetfound, statistic = "proportion", type = "ht", null = 0, alternative = "twosided", method = "theoretical", success = "More")
+```
+
+
+  Wich is a pretty low p-value for our standarts (<0.05) and a far confidence interval. It indicates that there is some measurable correlation between the opinion (the proportion in question) of veterans and the population of the United States on Underfounding in the Army.
+
